@@ -1,0 +1,1065 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>داشبورد مدیریت و مانیتورینگ هوشمند CCTV</title>
+    <!-- بارگذاری فونت وزیرمتن برای نمایش زیبای متون فارسی -->
+    <link href="https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/Vazirmatn-font-face.css" rel="stylesheet" type="text/css" />
+    <!-- بارگذاری Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- بارگذاری کتابخانه Chart.js برای رسم نمودارهای تحلیلی مشابه Power BI -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- بارگذاری آیکون‌های Lucide -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Vazirmatn', 'sans-serif'],
+                    },
+                    colors: {
+                        pbiBg: '#f3f4f6',
+                        pbiHeader: '#111827',
+                        pbiTeal: '#01b8aa',
+                        pbiDark: '#374649',
+                        pbiCoral: '#fd625e',
+                        pbiYellow: '#f2c80f',
+                        pbiBlue: '#5f6b6d',
+                        pbiPurple: '#8ad4eb'
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body {
+            font-family: 'Vazirmatn', sans-serif;
+            background-color: #eaecef;
+        }
+        /* استایل اختصاصی اسکرول‌بار */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #f1f1f1;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 3px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #94a3b8;
+        }
+        /* انیمیشن چشمک‌زن برای وضعیت زنده (REC) */
+        @keyframes pulse-rec {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.2; }
+        }
+        .animate-rec {
+            animation: pulse-rec 1.5s infinite;
+        }
+        /* افکت اسکن خطوط دوربین مداربسته */
+        .cctv-scanline {
+            background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.03), rgba(0, 255, 0, 0.01), rgba(0, 0, 255, 0.03));
+            background-size: 100% 2px, 3px 100%;
+        }
+    </style>
+</head>
+<body class="text-slate-800 antialiased overflow-x-hidden">
+
+    <!-- نوار بالایی شبیه Power BI -->
+    <header class="bg-[#1b1b1b] text-white h-12 px-4 flex items-center justify-between shadow-md sticky top-0 z-50">
+        <div class="flex items-center gap-4">
+            <button id="toggleSidebar" class="p-1.5 hover:bg-slate-800 rounded-md lg:hidden">
+                <i data-lucide="menu" class="w-5 h-5"></i>
+            </button>
+            <div class="flex items-center gap-2">
+                <div class="bg-[#f2c80f] text-black p-1 rounded font-bold text-xs flex items-center justify-center">
+                    <i data-lucide="cctv" class="w-4 h-4"></i>
+                </div>
+                <span class="font-bold text-sm tracking-wide text-amber-400">سامانه جامع پایش تصویری</span>
+                <span class="text-slate-500 hidden sm:inline">|</span>
+                <span class="text-xs text-slate-300 hidden sm:inline">داشبورد مدیریتی و تحلیل ترافیک CCTV</span>
+            </div>
+        </div>
+        
+        <div class="flex items-center gap-3">
+            <!-- نمایش وضعیت زنده سرور -->
+            <div class="hidden md:flex items-center gap-2 bg-slate-800/80 px-3 py-1 rounded-full text-xs border border-slate-700">
+                <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                <span class="text-slate-300">سرور مرکزی NVR: آنلاین</span>
+                <span id="liveClock" class="text-amber-400 font-mono mr-2">00:00:00</span>
+            </div>
+            
+            <button onclick="refreshDashboardData()" class="flex items-center gap-1.5 bg-slate-800 hover:bg-slate-700 text-xs px-3 py-1.5 rounded transition border border-slate-700" title="به‌روزرسانی داده‌ها">
+                <i data-lucide="refresh-cw" class="w-3.5 h-3.5 text-[#01b8aa]" id="refreshIcon"></i>
+                <span class="hidden sm:inline">به‌روزرسانی</span>
+            </button>
+            
+            <button onclick="openLiveWallModal()" class="flex items-center gap-1.5 bg-[#01b8aa] hover:bg-[#009b8f] text-white text-xs font-medium px-3 py-1.5 rounded transition shadow-sm">
+                <i data-lucide="grid" class="w-3.5 h-3.5"></i>
+                <span>دیوار نمایش زنده</span>
+            </button>
+        </div>
+    </header>
+
+    <div class="flex min-h-[calc(100vh-3rem)]">
+        <!-- نوار کناری (Sidebar) مشابه پنل ناوبری Power BI -->
+        <aside id="sidebar" class="bg-[#252423] text-slate-300 w-60 flex-shrink-0 transition-all duration-300 hidden lg:flex flex-col justify-between border-l border-slate-700">
+            <div class="p-3 space-y-1">
+                <div class="text-[11px] font-semibold text-slate-400 px-3 py-2 uppercase tracking-wider">منوی نظارت و گزارشات</div>
+                
+                <button onclick="switchTab('overview', this)" class="nav-btn w-full flex items-center gap-3 px-3 py-2.5 rounded-md text-xs font-medium bg-[#3b3a39] text-white border-r-4 border-[#01b8aa]">
+                    <i data-lucide="layout-dashboard" class="w-4 h-4 text-[#01b8aa]"></i>
+                    <span>نمای کلی و آمار تحلیلی</span>
+                </button>
+                
+                <button onclick="switchTab('cameras', this)" class="nav-btn w-full flex items-center gap-3 px-3 py-2.5 rounded-md text-xs font-medium hover:bg-[#323130] transition">
+                    <i data-lucide="video" class="w-4 h-4 text-slate-400"></i>
+                    <span>وضعیت دوربین‌ها (۱۴۸)</span>
+                </button>
+                
+                <button onclick="switchTab('alerts', this)" class="nav-btn w-full flex items-center gap-3 px-3 py-2.5 rounded-md text-xs font-medium hover:bg-[#323130] transition justify-between">
+                    <div class="flex items-center gap-3">
+                        <i data-lucide="bell-ring" class="w-4 h-4 text-[#fd625e]"></i>
+                        <span>هشدارهای هوشمند AI</span>
+                    </div>
+                    <span class="bg-[#fd625e] text-white text-[10px] px-1.5 py-0.5 rounded-full font-bold">۱۲</span>
+                </button>
+                
+                <button onclick="switchTab('storage', this)" class="nav-btn w-full flex items-center gap-3 px-3 py-2.5 rounded-md text-xs font-medium hover:bg-[#323130] transition">
+                    <i data-lucide="hard-drive" class="w-4 h-4 text-slate-400"></i>
+                    <span>فضای ذخیره‌سازی و NVR</span>
+                </button>
+
+                <!-- فیلتر سریع مناطق در سایدبار (Slicer) -->
+                <div class="pt-6 px-2">
+                    <div class="text-[11px] font-semibold text-slate-400 mb-2 flex items-center justify-between">
+                        <span>فیلتر سریع زون‌ها (Slicer)</span>
+                        <i data-lucide="filter" class="w-3 h-3"></i>
+                    </div>
+                    <div class="space-y-1.5 bg-[#1b1a19] p-2.5 rounded-lg border border-slate-700/60">
+                        <label class="flex items-center gap-2 text-xs cursor-pointer hover:text-white">
+                            <input type="radio" name="zoneFilter" value="all" checked onchange="filterDashboardByZone(this.value)" class="accent-[#01b8aa]">
+                            <span>همه سایت‌ها (کل مجموعه)</span>
+                        </label>
+                        <label class="flex items-center gap-2 text-xs cursor-pointer hover:text-white">
+                            <input type="radio" name="zoneFilter" value="north" onchange="filterDashboardByZone(this.value)" class="accent-[#01b8aa]">
+                            <span>سایت مرکزی و اداری</span>
+                        </label>
+                        <label class="flex items-center gap-2 text-xs cursor-pointer hover:text-white">
+                            <input type="radio" name="zoneFilter" value="warehouse" onchange="filterDashboardByZone(this.value)" class="accent-[#01b8aa]">
+                            <span>انبارها و لجستیک</span>
+                        </label>
+                        <label class="flex items-center gap-2 text-xs cursor-pointer hover:text-white">
+                            <input type="radio" name="zoneFilter" value="perimeter" onchange="filterDashboardByZone(this.value)" class="accent-[#01b8aa]">
+                            <span>محوطه و گیت‌های ورودی</span>
+                        </label>
+                    </div>
+                </div>
+            </div>
+
+            <!-- وضعیت سلامت سیستم در پایین سایدبار -->
+            <div class="p-3 m-3 bg-[#1b1a19] rounded-lg border border-slate-700/70">
+                <div class="flex items-center justify-between text-xs mb-1.5">
+                    <span class="text-slate-400">پایداری شبکه</span>
+                    <span class="text-[#01b8aa] font-bold">۹۹.۴٪</span>
+                </div>
+                <div class="w-full bg-slate-700 h-1.5 rounded-full overflow-hidden">
+                    <div class="bg-[#01b8aa] h-full rounded-full" style="width: 99.4%"></div>
+                </div>
+                <div class="text-[10px] text-slate-400 mt-2 flex justify-between">
+                    <span>پهنای باند: 1.8 Gbps</span>
+                    <span>دما: 41°C</span>
+                </div>
+            </div>
+        </aside>
+
+        <!-- محتوای اصلی داشبورد -->
+        <main class="flex-1 p-3 sm:p-4 space-y-3 overflow-y-auto">
+            
+            <!-- نوار عنوان و جستجوی هوشمند Q&A شبیه Power BI -->
+            <div class="bg-white rounded-lg p-3 shadow-sm border border-slate-200 flex flex-col md:flex-row md:items-center justify-between gap-3">
+                <div class="flex items-center gap-2">
+                    <h1 class="text-base sm:text-lg font-bold text-slate-800">داشبورد اجرایی پایش و امنیت تصویری</h1>
+                    <span id="activeZoneBadge" class="bg-teal-50 text-[#01b8aa] border border-teal-200 text-xs px-2.5 py-0.5 rounded-full font-medium">همه سایت‌ها</span>
+                </div>
+                
+                <!-- کادر پرسش از داده‌ها (Power BI Q&A Style) -->
+                <div class="relative flex-1 max-w-md">
+                    <input type="text" id="qaSearchInput" onkeyup="handleQuickSearch(event)" placeholder="سوالی درباره وضعیت دوربین‌ها یا هشدارها بپرسید... (مثلاً: دوربین‌های آفلاین)" 
+                        class="w-full bg-slate-50 border border-slate-300 rounded-md py-1.5 pr-9 pl-3 text-xs focus:outline-none focus:border-[#01b8aa] focus:bg-white transition">
+                    <i data-lucide="sparkles" class="w-4 h-4 text-[#01b8aa] absolute right-2.5 top-2"></i>
+                </div>
+            </div>
+
+            <!-- ردیف اول: شبکه تحلیلی شبیه چیدمان Power BI (3 کارت KPI + نمودار مساحتی + نقشه درختی Treemap) -->
+            <div class="grid grid-cols-1 lg:grid-cols-12 gap-3">
+                
+                <!-- ستون سمت راست: کارت‌های KPI و مینی‌چارت‌ها (4 ستون از 12 ستون) -->
+                <div class="lg:col-span-5 grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+                    <!-- KPI 1 -->
+                    <div class="bg-white p-3 rounded-lg shadow-sm border border-slate-200 flex flex-col justify-between hover:border-[#01b8aa] transition">
+                        <div class="flex items-center justify-between">
+                            <span class="text-[11px] font-semibold text-slate-500">کل دوربین‌های فعال</span>
+                            <i data-lucide="camera" class="w-3.5 h-3.5 text-[#01b8aa]"></i>
+                        </div>
+                        <div class="my-2">
+                            <span id="kpiActiveCams" class="text-2xl sm:text-3xl font-extrabold text-slate-800">۱۴۲</span>
+                            <span class="text-xs text-slate-400 mr-1">/ ۱۴۸</span>
+                        </div>
+                        <div class="text-[11px] text-emerald-600 flex items-center gap-1 font-medium">
+                            <span>۹۵.۹٪ آنلاین</span>
+                        </div>
+                    </div>
+
+                    <!-- KPI 2 -->
+                    <div class="bg-white p-3 rounded-lg shadow-sm border border-slate-200 flex flex-col justify-between hover:border-[#fd625e] transition">
+                        <div class="flex items-center justify-between">
+                            <span class="text-[11px] font-semibold text-slate-500">هشدارهای ۲۴ ساعت</span>
+                            <i data-lucide="alert-triangle" class="w-3.5 h-3.5 text-[#fd625e]"></i>
+                        </div>
+                        <div class="my-2">
+                            <span id="kpiAlerts" class="text-2xl sm:text-3xl font-extrabold text-[#fd625e]">۳۸</span>
+                            <span class="text-xs text-slate-400 mr-1">مورد</span>
+                        </div>
+                        <div class="text-[11px] text-rose-600 flex items-center gap-1 font-medium">
+                            <span>۴ هشدار بحرانی</span>
+                        </div>
+                    </div>
+
+                    <!-- KPI 3 -->
+                    <div class="bg-white p-3 rounded-lg shadow-sm border border-slate-200 flex flex-col justify-between col-span-2 sm:col-span-1 hover:border-[#f2c80f] transition">
+                        <div class="flex items-center justify-between">
+                            <span class="text-[11px] font-semibold text-slate-500">ظرفیت ذخیره‌سازی</span>
+                            <i data-lucide="database" class="w-3.5 h-3.5 text-[#f2c80f]"></i>
+                        </div>
+                        <div class="my-2">
+                            <span id="kpiStorage" class="text-2xl sm:text-3xl font-extrabold text-slate-800">۷۴.۲٪</span>
+                        </div>
+                        <div class="text-[11px] text-slate-500 flex items-center gap-1">
+                            <span>۱۸۵ ترابایت از ۲۵۰ TB</span>
+                        </div>
+                    </div>
+
+                    <!-- مینی کارت 4: ترافیک شبکه -->
+                    <div class="bg-white p-2.5 rounded-lg shadow-sm border border-slate-200 flex flex-col justify-between">
+                        <span class="text-[10px] font-semibold text-slate-500">نرخ بیت استریم (Mbps)</span>
+                        <div class="h-14 mt-1">
+                            <canvas id="miniSparklineChart"></canvas>
+                        </div>
+                    </div>
+
+                    <!-- مینی کارت 5: رویدادهای تشخیص چهره و پلاک -->
+                    <div class="bg-white p-2.5 rounded-lg shadow-sm border border-slate-200 flex flex-col justify-between">
+                        <span class="text-[10px] font-semibold text-slate-500">تردد پلاک‌خوان (ANPR)</span>
+                        <div class="h-14 mt-1">
+                            <canvas id="miniBarChart"></canvas>
+                        </div>
+                    </div>
+
+                    <!-- مینی کارت 6: وضعیت سلامت دوربین‌ها (Donut) -->
+                    <div class="bg-white p-2.5 rounded-lg shadow-sm border border-slate-200 flex flex-col justify-between col-span-2 sm:col-span-1">
+                        <span class="text-[10px] font-semibold text-slate-500">وضعیت اتصال</span>
+                        <div class="flex items-center justify-between mt-1">
+                            <div class="w-12 h-12">
+                                <canvas id="miniDonutChart"></canvas>
+                            </div>
+                            <div class="text-[10px] space-y-0.5">
+                                <div class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-[#01b8aa]"></span> سالم: ۱۴۲</div>
+                                <div class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-[#fd625e]"></span> قطع: ۴</div>
+                                <div class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-[#f2c80f]"></span> افت کیفیت: ۲</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ستون وسط: نمودار مساحتی روند تشخیص رویدادها (Area Chart مشابه Power BI) -->
+                <div class="lg:col-span-4 bg-white p-3 rounded-lg shadow-sm border border-slate-200 flex flex-col">
+                    <div class="flex items-center justify-between mb-2">
+                        <div>
+                            <h2 class="text-xs font-bold text-slate-700">روند تشخیص هوشمند رویدادها (بر اساس دسته‌بندی)</h2>
+                            <p class="text-[10px] text-slate-400">مقایسه تردد افراد، خودرو و هشدارهای محیطی در ۶ ماه اخیر</p>
+                        </div>
+                        <button class="text-slate-400 hover:text-slate-600"><i data-lucide="more-horizontal" class="w-4 h-4"></i></button>
+                    </div>
+                    <div class="flex-1 min-h-[175px] relative">
+                        <canvas id="areaTrendChart"></canvas>
+                    </div>
+                </div>
+
+                <!-- ستون سمت چپ: نمودار Treemap توزیع دوربین‌ها و فضای مصرفی بر اساس زون (مشابه Treemap در تصویر) -->
+                <div class="lg:col-span-3 bg-white p-3 rounded-lg shadow-sm border border-slate-200 flex flex-col">
+                    <div class="flex items-center justify-between mb-2">
+                        <div>
+                            <h2 class="text-xs font-bold text-slate-700">توزیع دوربین‌ها و مصرف فضا (Treemap)</h2>
+                            <p class="text-[10px] text-slate-400">سهم هر بخش از کل منابع سیستم</p>
+                        </div>
+                    </div>
+                    <!-- طراحی دقیق Treemap تعاملی با گرید CSS مشابه Power BI -->
+                    <div class="flex-1 grid grid-cols-12 grid-rows-6 gap-1 min-h-[175px] text-white text-[11px] font-medium">
+                        <div onclick="filterDashboardByZone('warehouse')" class="col-span-7 row-span-4 bg-[#01b8aa] hover:opacity-90 cursor-pointer p-2 rounded flex flex-col justify-between transition" title="انبارها و لجستیک: ۵۴ دوربین">
+                            <span>انبارها و لجستیک</span>
+                            <span class="text-base font-bold">۵۴ دوربین</span>
+                        </div>
+                        <div onclick="filterDashboardByZone('perimeter')" class="col-span-5 row-span-3 bg-[#fd625e] hover:opacity-90 cursor-pointer p-2 rounded flex flex-col justify-between transition" title="محوطه و گیت‌ها: ۳۸ دوربین">
+                            <span>محوطه و گیت‌ها</span>
+                            <span class="text-sm font-bold">۳۸ دوربین</span>
+                        </div>
+                        <div onclick="filterDashboardByZone('north')" class="col-span-5 row-span-3 bg-[#f2c80f] text-slate-900 hover:opacity-90 cursor-pointer p-2 rounded flex flex-col justify-between transition" title="ساختمان اداری: ۳۲ دوربین">
+                            <span>ساختمان اداری</span>
+                            <span class="text-sm font-bold">۳۲ دوربین</span>
+                        </div>
+                        <div class="col-span-4 row-span-2 bg-[#374649] hover:opacity-90 cursor-pointer p-1.5 rounded flex flex-col justify-between transition">
+                            <span class="text-[10px]">پارکینگ‌ها</span>
+                            <span class="font-bold">۱۶</span>
+                        </div>
+                        <div class="col-span-3 row-span-2 bg-[#5f6b6d] hover:opacity-90 cursor-pointer p-1.5 rounded flex flex-col justify-between transition">
+                            <span class="text-[10px]">اتاق سرور</span>
+                            <span class="font-bold">۸</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ردیف دوم: نمودار نوسانات ساعتی + تحلیل تغییرات + قیف هشدارها (Funnel Chart مشابه Power BI) -->
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-12 gap-3">
+                
+                <!-- نمودار روند ساعتی تردد و هشدار (4 ستون) -->
+                <div class="lg:col-span-4 bg-white p-3 rounded-lg shadow-sm border border-slate-200 flex flex-col">
+                    <div class="flex items-center justify-between mb-2">
+                        <div>
+                            <h2 class="text-xs font-bold text-slate-700">نوسان لحظه‌ای تشخیص حرکت (۲۴ ساعت گذشته)</h2>
+                            <p class="text-[10px] text-slate-400">تعداد فریم‌های دارای رویداد در هر ساعت</p>
+                        </div>
+                    </div>
+                    <div class="flex-1 min-h-[180px]">
+                        <canvas id="hourlySpikesChart"></canvas>
+                    </div>
+                </div>
+
+                <!-- نمودار آبشاری/ستونی وضعیت سلامت و خطاها (4 ستون) -->
+                <div class="lg:col-span-4 bg-white p-3 rounded-lg shadow-sm border border-slate-200 flex flex-col">
+                    <div class="flex items-center justify-between mb-2">
+                        <div>
+                            <h2 class="text-xs font-bold text-slate-700">تحلیل علل اختلال و افت کیفیت تصویر</h2>
+                            <p class="text-[10px] text-slate-400">تفکیک خطاهای فنی ثبت شده در هفته جاری</p>
+                        </div>
+                    </div>
+                    <div class="flex-1 min-h-[180px]">
+                        <canvas id="varianceChart"></canvas>
+                    </div>
+                </div>
+
+                <!-- نمودار قیفی پردازش هشدارها (Funnel Chart مشابه Sales Pipeline در تصویر) (4 ستون) -->
+                <div class="lg:col-span-4 bg-white p-3 rounded-lg shadow-sm border border-slate-200 flex flex-col">
+                    <div class="flex items-center justify-between mb-2">
+                        <div>
+                            <h2 class="text-xs font-bold text-slate-700">قیف پالایش هشدارهای هوشمند (AI Funnel)</h2>
+                            <p class="text-[10px] text-slate-400">از تشخیص اولیه حرکت تا تایید اپراتور امنیتی</p>
+                        </div>
+                    </div>
+                    <div class="flex-1 flex flex-col justify-center space-y-1.5 py-1 text-xs">
+                        <div class="flex items-center gap-2">
+                            <span class="w-28 text-[11px] text-slate-600 text-left truncate">کل تشخیص حرکت</span>
+                            <div class="flex-1 flex justify-center">
+                                <div class="bg-[#5bc0de] text-white text-[11px] font-bold py-1 px-3 rounded text-center shadow-sm" style="width: 100%;">۴,۲۵۰ رویداد</div>
+                            </div>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <span class="w-28 text-[11px] text-slate-600 text-left truncate">فیلتر هوش مصنوعی</span>
+                            <div class="flex-1 flex justify-center">
+                                <div class="bg-[#46b8da] text-white text-[11px] font-bold py-1 px-3 rounded text-center shadow-sm" style="width: 78%;">۱,۸۴۰ مورد</div>
+                            </div>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <span class="w-28 text-[11px] text-slate-600 text-left truncate">ورود به منطقه ممنوعه</span>
+                            <div class="flex-1 flex justify-center">
+                                <div class="bg-[#31b0d5] text-white text-[11px] font-bold py-1 px-3 rounded text-center shadow-sm" style="width: 56%;">۴۱۲ مورد</div>
+                            </div>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <span class="w-28 text-[11px] text-slate-600 text-left truncate">ارسال به میز کنترل</span>
+                            <div class="flex-1 flex justify-center">
+                                <div class="bg-[#01b8aa] text-white text-[11px] font-bold py-1 px-3 rounded text-center shadow-sm" style="width: 38%;">۹۶ هشدار</div>
+                            </div>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <span class="w-28 text-[11px] text-slate-600 text-left truncate">اقدام عملیاتی انجام شده</span>
+                            <div class="flex-1 flex justify-center">
+                                <div class="bg-[#fd625e] text-white text-[11px] font-bold py-1 px-3 rounded text-center shadow-sm" style="width: 24%;">۱۴ اقدام</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ردیف سوم: نقشه تعاملی موقعیت دوربین‌ها + جدول زنده دوربین‌ها و فید پیش‌نمایش -->
+            <div class="grid grid-cols-1 lg:grid-cols-12 gap-3">
+                
+                <!-- نقشه شماتیک موقعیت دوربین‌ها در سایت (مشابه نقشه جغرافیایی پایین سمت چپ تصویر) (4 ستون) -->
+                <div class="lg:col-span-4 bg-white p-3 rounded-lg shadow-sm border border-slate-200 flex flex-col">
+                    <div class="flex items-center justify-between mb-2">
+                        <div>
+                            <h2 class="text-xs font-bold text-slate-700">نقشه استقرار و وضعیت آنلاین دوربین‌ها</h2>
+                            <p class="text-[10px] text-slate-400">روی هر نقطه کلیک کنید تا تصویر زنده دوربین باز شود</p>
+                        </div>
+                        <span class="text-[10px] bg-slate-100 px-2 py-0.5 rounded text-slate-600">نمای شماتیک سایت</span>
+                    </div>
+                    
+                    <!-- نقشه SVG تعاملی محوطه صنعتی/اداری -->
+                    <div class="relative flex-1 bg-[#e8f0f8] rounded-lg border border-slate-200 overflow-hidden min-h-[220px] flex items-center justify-center">
+                        <svg viewBox="0 0 400 240" class="w-full h-full">
+                            <!-- خطوط شبکه نقشه -->
+                            <defs>
+                                <pattern id="grid" width="20" height="20" patternUnits="userSpaceOnUse">
+                                    <path d="M 20 0 L 0 0 0 20" fill="none" stroke="#d0dfee" stroke-width="0.8"/>
+                                </pattern>
+                            </defs>
+                            <rect width="400" height="240" fill="url(#grid)" />
+                            
+                            <!-- جاده‌ها و مسیرهای دسترسی -->
+                            <path d="M 20 120 L 380 120 M 200 20 L 200 220" stroke="#ffffff" stroke-width="14" />
+                            <path d="M 20 120 L 380 120 M 200 20 L 200 220" stroke="#cbd5e1" stroke-width="1" stroke-dasharray="4 4" />
+                            
+                            <!-- ساختمان‌ها و سوله‌ها -->
+                            <rect x="40" y="30" width="120" height="65" rx="4" fill="#cbd5e1" stroke="#94a3b8" />
+                            <text x="100" y="66" font-size="10" fill="#334155" text-anchor="middle" font-weight="bold">ساختمان اداری مرکزی</text>
+                            
+                            <rect x="235" y="30" width="130" height="65" rx="4" fill="#cbd5e1" stroke="#94a3b8" />
+                            <text x="300" y="66" font-size="10" fill="#334155" text-anchor="middle" font-weight="bold">سوله انبار شماره ۱</text>
+                            
+                            <rect x="40" y="145" width="120" height="65" rx="4" fill="#cbd5e1" stroke="#94a3b8" />
+                            <text x="100" y="180" font-size="10" fill="#334155" text-anchor="middle" font-weight="bold">پارکینگ و گیت غربی</text>
+                            
+                            <rect x="235" y="145" width="130" height="65" rx="4" fill="#cbd5e1" stroke="#94a3b8" />
+                            <text x="300" y="180" font-size="10" fill="#334155" text-anchor="middle" font-weight="bold">لجستیک و بارانداز</text>
+
+                            <!-- نقاط دوربین‌های تعاملی (Nodes) -->
+                            <!-- دوربین 1: آنلاین -->
+                            <g class="cursor-pointer hover:scale-125 transition-transform" onclick="previewCamera('CAM-01', 'ورودی اصلی ساختمان اداری', 'online')">
+                                <circle cx="155" cy="95" r="10" fill="#01b8aa" fill-opacity="0.25" />
+                                <circle cx="155" cy="95" r="5" fill="#01b8aa" stroke="#fff" stroke-width="1.5" />
+                            </g>
+                            <!-- دوربین 2: آنلاین -->
+                            <g class="cursor-pointer hover:scale-125 transition-transform" onclick="previewCamera('CAM-04', 'راهرو انبار شماره ۱', 'online')">
+                                <circle cx="240" cy="95" r="10" fill="#01b8aa" fill-opacity="0.25" />
+                                <circle cx="240" cy="95" r="5" fill="#01b8aa" stroke="#fff" stroke-width="1.5" />
+                            </g>
+                            <!-- دوربین 3: هشدار/آفلاین -->
+                            <g class="cursor-pointer hover:scale-125 transition-transform" onclick="previewCamera('CAM-09', 'گیت ورودی پارکینگ غربی', 'offline')">
+                                <circle cx="155" cy="145" r="12" fill="#fd625e" fill-opacity="0.35" class="animate-ping" />
+                                <circle cx="155" cy="145" r="5.5" fill="#fd625e" stroke="#fff" stroke-width="1.5" />
+                            </g>
+                            <!-- دوربین 4: آنلاین -->
+                            <g class="cursor-pointer hover:scale-125 transition-transform" onclick="previewCamera('CAM-12', 'محوطه بارانداز شرقی', 'online')">
+                                <circle cx="300" cy="145" r="10" fill="#01b8aa" fill-opacity="0.25" />
+                                <circle cx="300" cy="145" r="5" fill="#01b8aa" stroke="#fff" stroke-width="1.5" />
+                            </g>
+                            <!-- دوربین 5: افت کیفیت -->
+                            <g class="cursor-pointer hover:scale-125 transition-transform" onclick="previewCamera('CAM-15', 'چهارراه مرکزی محوطه', 'warning')">
+                                <circle cx="200" cy="120" r="10" fill="#f2c80f" fill-opacity="0.35" />
+                                <circle cx="200" cy="120" r="5" fill="#f2c80f" stroke="#fff" stroke-width="1.5" />
+                            </g>
+                        </svg>
+                        
+                        <!-- راهنمای نقشه -->
+                        <div class="absolute bottom-2 right-2 bg-white/90 backdrop-blur-sm px-2.5 py-1 rounded border border-slate-200 flex items-center gap-3 text-[10px]">
+                            <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-[#01b8aa]"></span> آنلاین</span>
+                            <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-[#f2c80f]"></span> هشدار</span>
+                            <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-[#fd625e]"></span> قطع</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- جدول مدیریت و وضعیت لحظه‌ای دوربین‌ها + پیش‌نمایش سریع (8 ستون) -->
+                <div class="lg:col-span-8 bg-white p-3 rounded-lg shadow-sm border border-slate-200 flex flex-col">
+                    <div class="flex flex-wrap items-center justify-between gap-2 mb-2.5">
+                        <div>
+                            <h2 class="text-xs font-bold text-slate-700">لیست پایش وضعیت دوربین‌ها و سرورهای NVR</h2>
+                            <p class="text-[10px] text-slate-400">امکان مشاهده تصویر زنده، ریبوت از راه دور و بررسی نرخ فریم</p>
+                        </div>
+                        <div class="flex items-center gap-1.5">
+                            <button onclick="filterTableStatus('all')" class="status-filter-btn bg-slate-800 text-white text-[11px] px-2.5 py-1 rounded">همه</button>
+                            <button onclick="filterTableStatus('online')" class="status-filter-btn bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] px-2.5 py-1 rounded">آنلاین</button>
+                            <button onclick="filterTableStatus('offline')" class="status-filter-btn bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] px-2.5 py-1 rounded">آفلاین / خطا</button>
+                        </div>
+                    </div>
+
+                    <div class="overflow-x-auto flex-1">
+                        <table class="w-full text-right border-collapse text-xs">
+                            <thead>
+                                <tr class="bg-slate-50 border-y border-slate-200 text-slate-500 text-[11px]">
+                                    <th class="py-2 px-2.5 font-semibold">شناسه دوربین</th>
+                                    <th class="py-2 px-2.5 font-semibold">موقعیت مکانی</th>
+                                    <th class="py-2 px-2.5 font-semibold">وضعیت</th>
+                                    <th class="py-2 px-2.5 font-semibold">رزولوشن / FPS</th>
+                                    <th class="py-2 px-2.5 font-semibold">پهنای باند</th>
+                                    <th class="py-2 px-2.5 font-semibold">آخرین رویداد AI</th>
+                                    <th class="py-2 px-2.5 font-semibold text-center">عملیات</th>
+                                </tr>
+                            </thead>
+                            <tbody id="cameraTableBody" class="divide-y divide-slate-100">
+                                <!-- ردیف‌ها توسط جاوااسکریپت پر می‌شوند -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- مودال پیش‌نمایش زنده دوربین تکی (Live Camera Preview Modal) -->
+    <div id="cameraModal" class="fixed inset-0 bg-black/75 backdrop-blur-sm z-50 hidden items-center justify-center p-4">
+        <div class="bg-[#1b1b1b] text-white rounded-xl max-w-2xl w-full overflow-hidden border border-slate-700 shadow-2xl">
+            <div class="px-4 py-3 bg-[#252423] flex items-center justify-between border-b border-slate-700">
+                <div class="flex items-center gap-2.5">
+                    <span id="modalRecDot" class="w-2.5 h-2.5 rounded-full bg-red-500 animate-rec"></span>
+                    <h3 id="modalCamTitle" class="font-bold text-sm">CAM-01 - ورودی اصلی</h3>
+                    <span id="modalCamBadge" class="text-[10px] bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 px-2 py-0.5 rounded">در حال ضبط</span>
+                </div>
+                <button onclick="closeCameraModal()" class="text-slate-400 hover:text-white p-1">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+            
+            <!-- شبیه‌ساز تصویر زنده دوربین مداربسته -->
+            <div class="relative bg-black aspect-video flex items-center justify-center overflow-hidden cctv-scanline">
+                <canvas id="simulatedFeedCanvas" class="w-full h-full object-cover"></canvas>
+                
+                <!-- اطلاعات OSD روی تصویر دوربین -->
+                <div class="absolute top-3 right-3 bg-black/60 px-2.5 py-1 rounded text-[11px] font-mono text-emerald-400 border border-white/10">
+                    <div id="osdTimestamp">2026-11-15 06:58:12</div>
+                    <div>BITRATE: 4096 Kbps | H.265+</div>
+                </div>
+                
+                <div class="absolute bottom-3 left-3 flex items-center gap-2">
+                    <button onclick="showToast('دستور بازنشانی (Reboot) به دوربین ارسال شد')" class="bg-slate-800/90 hover:bg-slate-700 text-xs px-3 py-1.5 rounded border border-slate-600 flex items-center gap-1.5">
+                        <i data-lucide="rotate-cw" class="w-3.5 h-3.5 text-amber-400"></i>
+                        <span>ریبوت دوربین</span>
+                    </button>
+                    <button onclick="showToast('تصویر لحظه‌ای (Snapshot) در سرور ذخیره شد')" class="bg-[#01b8aa] hover:bg-[#009b8f] text-xs px-3 py-1.5 rounded font-medium flex items-center gap-1.5">
+                        <i data-lucide="camera" class="w-3.5 h-3.5"></i>
+                        <span>ثبت عکس لحظه‌ای</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- مودال دیوار نمایش زنده چندکاناله (Live Video Wall 2x2) -->
+    <div id="liveWallModal" class="fixed inset-0 bg-black/85 backdrop-blur-sm z-50 hidden items-center justify-center p-3 sm:p-6">
+        <div class="bg-[#18181b] text-white rounded-xl max-w-5xl w-full overflow-hidden border border-slate-700 shadow-2xl flex flex-col max-h-[90vh]">
+            <div class="px-4 py-3 bg-[#252423] flex items-center justify-between border-b border-slate-700">
+                <div class="flex items-center gap-2">
+                    <i data-lucide="grid" class="w-4 h-4 text-[#01b8aa]"></i>
+                    <h3 class="font-bold text-sm">دیوار نمایش زنده چندکاناله (4CH Live Matrix)</h3>
+                </div>
+                <button onclick="closeLiveWallModal()" class="text-slate-400 hover:text-white p-1">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+            
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 p-3 bg-black flex-1 overflow-y-auto">
+                <!-- کانال 1 -->
+                <div class="relative aspect-video bg-slate-900 rounded border border-slate-700 overflow-hidden cctv-scanline">
+                    <canvas id="wallCam1" class="w-full h-full"></canvas>
+                    <span class="absolute top-2 right-2 bg-black/70 text-[10px] px-2 py-0.5 rounded font-mono text-emerald-400">CH01 - گیت ورودی شمالی [LIVE]</span>
+                </div>
+                <!-- کانال 2 -->
+                <div class="relative aspect-video bg-slate-900 rounded border border-slate-700 overflow-hidden cctv-scanline">
+                    <canvas id="wallCam2" class="w-full h-full"></canvas>
+                    <span class="absolute top-2 right-2 bg-black/70 text-[10px] px-2 py-0.5 rounded font-mono text-emerald-400">CH02 - انبار مرکزی قطعات [LIVE]</span>
+                </div>
+                <!-- کانال 3 -->
+                <div class="relative aspect-video bg-slate-900 rounded border border-slate-700 overflow-hidden cctv-scanline">
+                    <canvas id="wallCam3" class="w-full h-full"></canvas>
+                    <span class="absolute top-2 right-2 bg-black/70 text-[10px] px-2 py-0.5 rounded font-mono text-amber-400">CH03 - پارکینگ کارکنان [MOTION]</span>
+                </div>
+                <!-- کانال 4 -->
+                <div class="relative aspect-video bg-slate-900 rounded border border-slate-700 overflow-hidden flex flex-col items-center justify-center text-slate-500">
+                    <i data-lucide="wifi-off" class="w-8 h-8 text-[#fd625e] mb-1"></i>
+                    <span class="text-xs text-slate-300 font-bold">CAM-09 - NO SIGNAL</span>
+                    <span class="text-[10px] text-slate-500 mt-0.5">در حال تلاش برای اتصال مجدد...</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- اعلان شناور (Toast Notification) -->
+    <div id="toastBox" class="fixed bottom-4 left-4 bg-slate-900 text-white text-xs px-4 py-3 rounded-lg shadow-xl border border-slate-700 flex items-center gap-2.5 transform translate-y-20 opacity-0 transition-all duration-300 z-50">
+        <i data-lucide="check-circle-2" class="w-4 h-4 text-[#01b8aa]"></i>
+        <span id="toastMessage">عملیات با موفقیت انجام شد</span>
+    </div>
+
+    <script>
+        // راه‌اندازی اولیه آیکون‌های Lucide
+        lucide.createIcons();
+
+        // داده‌های نمونه دوربین‌ها
+        const camerasData = [
+            { id: 'CAM-01', name: 'ورودی اصلی ساختمان اداری', zone: 'north', status: 'online', res: '4K / 30fps', bandwidth: '4.2 Mbps', lastEvent: 'تشخیص چهره (۲ دقیقه پیش)' },
+            { id: 'CAM-04', name: 'راهرو اصلی انبار شماره ۱', zone: 'warehouse', status: 'online', res: '2K / 25fps', bandwidth: '2.8 Mbps', lastEvent: 'تردد لیفتراک (۵ دقیقه پیش)' },
+            { id: 'CAM-09', name: 'گیت ورودی پارکینگ غربی', zone: 'perimeter', status: 'offline', res: '1080p / 0fps', bandwidth: '0.0 Mbps', lastEvent: 'قطع ارتباط شبکه (۱۸ دقیقه پیش)' },
+            { id: 'CAM-12', name: 'محوطه بارانداز شرقی', zone: 'warehouse', status: 'online', res: '4K / 30fps', bandwidth: '4.5 Mbps', lastEvent: 'پلاک‌خوان خودرو (هم‌اکنون)' },
+            { id: 'CAM-15', name: 'چهارراه مرکزی محوطه', zone: 'perimeter', status: 'warning', res: '1080p / 12fps', bandwidth: '1.1 Mbps', lastEvent: 'افت نرخ فریم / نویز تصویر' },
+            { id: 'CAM-18', name: 'ورودی اتاق سرور و دیتاسنتر', zone: 'north', status: 'online', res: '4K / 60fps', bandwidth: '6.1 Mbps', lastEvent: 'بدون حرکت (عادی)' },
+            { id: 'CAM-22', name: 'ضلع شمالی حصار پیرامونی', zone: 'perimeter', status: 'offline', res: '1080p / 0fps', bandwidth: '0.0 Mbps', lastEvent: 'خطای تغذیه PoE سوئیچ' }
+        ];
+
+        let currentZoneFilter = 'all';
+        let currentStatusFilter = 'all';
+
+        // به‌روزرسانی ساعت زنده بالای صفحه
+        function updateClock() {
+            const now = new Date();
+            const timeStr = now.toLocaleTimeString('fa-IR', { hour12: false });
+            document.getElementById('liveClock').textContent = timeStr;
+            const osdEl = document.getElementById('osdTimestamp');
+            if (osdEl) {
+                osdEl.textContent = now.toISOString().replace('T', ' ').substring(0, 19);
+            }
+        }
+        setInterval(updateClock, 1000);
+        updateClock();
+
+        // رندر جدول دوربین‌ها
+        function renderCameraTable() {
+            const tbody = document.getElementById('cameraTableBody');
+            tbody.innerHTML = '';
+
+            const filtered = camerasData.filter(cam => {
+                const matchZone = currentZoneFilter === 'all' || cam.zone === currentZoneFilter;
+                const matchStatus = currentStatusFilter === 'all' || 
+                                    (currentStatusFilter === 'online' && cam.status === 'online') ||
+                                    (currentStatusFilter === 'offline' && (cam.status === 'offline' || cam.status === 'warning'));
+                return matchZone && matchStatus;
+            });
+
+            filtered.forEach(cam => {
+                let statusBadge = '';
+                if (cam.status === 'online') {
+                    statusBadge = `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-emerald-50 text-emerald-700 border border-emerald-200"><span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>آنلاین</span>`;
+                } else if (cam.status === 'offline') {
+                    statusBadge = `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-rose-50 text-rose-700 border border-rose-200"><span class="w-1.5 h-1.5 rounded-full bg-rose-500"></span>قطع ارتباط</span>`;
+                } else {
+                    statusBadge = `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-amber-50 text-amber-700 border border-amber-200"><span class="w-1.5 h-1.5 rounded-full bg-amber-500"></span>افت کیفیت</span>`;
+                }
+
+                const row = `
+                    <tr class="hover:bg-slate-50 transition">
+                        <td class="py-2 px-2.5 font-bold text-slate-700 font-mono">${cam.id}</td>
+                        <td class="py-2 px-2.5 text-slate-700">${cam.name}</td>
+                        <td class="py-2 px-2.5">${statusBadge}</td>
+                        <td class="py-2 px-2.5 text-slate-500 font-mono text-[11px]">${cam.res}</td>
+                        <td class="py-2 px-2.5 text-slate-600 font-mono text-[11px]">${cam.bandwidth}</td>
+                        <td class="py-2 px-2.5 text-slate-500 text-[11px]">${cam.lastEvent}</td>
+                        <td class="py-2 px-2.5 text-center">
+                            <button onclick="previewCamera('${cam.id}', '${cam.name}', '${cam.status}')" class="bg-slate-100 hover:bg-[#01b8aa] hover:text-white text-slate-700 px-2.5 py-1 rounded text-[11px] font-medium transition inline-flex items-center gap-1">
+                                <i data-lucide="eye" class="w-3 h-3"></i>
+                                <span>پخش زنده</span>
+                            </button>
+                        </td>
+                    </tr>
+                `;
+                tbody.insertAdjacentHTML('beforeend', row);
+            });
+            lucide.createIcons();
+        }
+
+        // فیلتر وضعیت جدول
+        function filterTableStatus(status) {
+            currentStatusFilter = status;
+            document.querySelectorAll('.status-filter-btn').forEach(btn => {
+                btn.classList.remove('bg-slate-800', 'text-white');
+                btn.classList.add('bg-slate-100', 'text-slate-700');
+            });
+            event.target.classList.remove('bg-slate-100', 'text-slate-700');
+            event.target.classList.add('bg-slate-800', 'text-white');
+            renderCameraTable();
+        }
+
+        // فیلتر کل داشبورد بر اساس زون (Slicer)
+        function filterDashboardByZone(zone) {
+            currentZoneFilter = zone;
+            const zoneLabels = {
+                'all': 'همه سایت‌ها',
+                'north': 'سایت مرکزی و اداری',
+                'warehouse': 'انبارها و لجستیک',
+                'perimeter': 'محوطه و گیت‌های ورودی'
+            };
+            document.getElementById('activeZoneBadge').textContent = zoneLabels[zone] || 'همه سایت‌ها';
+            
+            // همگام‌سازی رادیو باتن سایدبار
+            const radio = document.querySelector(`input[name="zoneFilter"][value="${zone}"]`);
+            if (radio) radio.checked = true;
+
+            // تغییر پویای اعداد KPI بر اساس زون انتخاب شده
+            if (zone === 'all') {
+                document.getElementById('kpiActiveCams').textContent = '۱۴۲';
+                document.getElementById('kpiAlerts').textContent = '۳۸';
+                document.getElementById('kpiStorage').textContent = '۷۴.۲٪';
+            } else if (zone === 'warehouse') {
+                document.getElementById('kpiActiveCams').textContent = '۵۲';
+                document.getElementById('kpiAlerts').textContent = '۱۴';
+                document.getElementById('kpiStorage').textContent = '۸۱.۵٪';
+            } else if (zone === 'perimeter') {
+                document.getElementById('kpiActiveCams').textContent = '۳۵';
+                document.getElementById('kpiAlerts').textContent = '۱۹';
+                document.getElementById('kpiStorage').textContent = '۶۸.۰٪';
+            } else {
+                document.getElementById('kpiActiveCams').textContent = '۳۱';
+                document.getElementById('kpiAlerts').textContent = '۵';
+                document.getElementById('kpiStorage').textContent = '۶۲.۴٪';
+            }
+
+            renderCameraTable();
+            showToast(`فیلتر داشبورد روی «${zoneLabels[zone]}» اعمال شد`);
+        }
+
+        // تنظیمات مشترک فونت فارسی در Chart.js
+        Chart.defaults.font.family = 'Vazirmatn, sans-serif';
+        Chart.defaults.color = '#64748b';
+
+        // ۱. نمودار Sparkline کوچک
+        new Chart(document.getElementById('miniSparklineChart'), {
+            type: 'line',
+            data: {
+                labels: ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10'],
+                datasets: [{
+                    data: [420, 450, 410, 490, 520, 480, 510, 540, 495, 530],
+                    borderColor: '#01b8aa',
+                    backgroundColor: 'rgba(1, 184, 170, 0.15)',
+                    borderWidth: 2,
+                    fill: true,
+                    pointRadius: 0,
+                    tension: 0.4
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { display: false } },
+                scales: { x: { display: false }, y: { display: false } }
+            }
+        });
+
+        // ۲. نمودار ستونی کوچک
+        new Chart(document.getElementById('miniBarChart'), {
+            type: 'bar',
+            data: {
+                labels: ['ش', 'ی', 'د', 'س', 'چ', 'پ', 'ج'],
+                datasets: [{
+                    data: [120, 190, 150, 220, 280, 240, 310],
+                    backgroundColor: ['#fd625e', '#f2c80f', '#01b8aa', '#01b8aa', '#374649', '#01b8aa', '#01b8aa'],
+                    borderRadius: 2
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { display: false } },
+                scales: { x: { display: false }, y: { display: false } }
+            }
+        });
+
+        // ۳. نمودار دایره‌ای کوچک (Donut)
+        new Chart(document.getElementById('miniDonutChart'), {
+            type: 'doughnut',
+            data: {
+                labels: ['سالم', 'قطع', 'افت کیفیت'],
+                datasets: [{
+                    data: [142, 4, 2],
+                    backgroundColor: ['#01b8aa', '#fd625e', '#f2c80f'],
+                    borderWidth: 0
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                cutout: '68%',
+                plugins: { legend: { display: false } }
+            }
+        });
+
+        // ۴. نمودار مساحتی روند تشخیص هوشمند رویدادها (Area Chart)
+        const areaChart = new Chart(document.getElementById('areaTrendChart'), {
+            type: 'line',
+            data: {
+                labels: ['خرداد', 'تیر', 'مرداد', 'شهریور', 'مهر', 'آبان'],
+                datasets: [
+                    {
+                        label: 'تردد افراد',
+                        data: [1200, 1450, 1380, 1790, 1650, 1920],
+                        borderColor: '#01b8aa',
+                        backgroundColor: 'rgba(1, 184, 170, 0.35)',
+                        fill: true,
+                        tension: 0.35
+                    },
+                    {
+                        label: 'تردد خودرو',
+                        data: [850, 920, 1100, 980, 1050, 1180],
+                        borderColor: '#374649',
+                        backgroundColor: 'rgba(55, 70, 73, 0.35)',
+                        fill: true,
+                        tension: 0.35
+                    },
+                    {
+                        label: 'هشدار امنیتی',
+                        data: [320, 680, 290, 340, 280, 310],
+                        borderColor: '#f2c80f',
+                        backgroundColor: 'rgba(242, 200, 15, 0.45)',
+                        fill: true,
+                        tension: 0.35
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: 'left',
+                        labels: { boxWidth: 10, font: { size: 10 } }
+                    }
+                },
+                scales: {
+                    x: { grid: { display: false }, ticks: { font: { size: 10 } } },
+                    y: { border: { display: false }, ticks: { font: { size: 10 } } }
+                }
+            }
+        });
+
+        // ۵. نمودار نوسانات ساعتی (Hourly Spikes)
+        new Chart(document.getElementById('hourlySpikesChart'), {
+            type: 'line',
+            data: {
+                labels: ['۰۰:۰۰', '۰۳:۰۰', '۰۶:۰۰', '۰۸:۰۰', '۱۰:۰۰', '۱۲:۰۰', '۱۴:۰۰', '۱۶:۰۰', '۱۸:۰۰', '۲۰:۰۰', '۲۲:۰۰'],
+                datasets: [{
+                    label: 'رویداد حرکتی',
+                    data: [45, 20, 85, 420, 310, 390, 480, 440, 260, 140, 75],
+                    borderColor: '#01b8aa',
+                    backgroundColor: 'rgba(1, 184, 170, 0.2)',
+                    borderWidth: 2,
+                    fill: true,
+                    pointRadius: 2.5,
+                    pointBackgroundColor: '#01b8aa'
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { display: false } },
+                scales: {
+                    x: { grid: { display: false }, ticks: { font: { size: 9 } } },
+                    y: { ticks: { font: { size: 9 } } }
+                }
+            }
+        });
+
+        // ۶. نمودار تحلیل علل اختلال (Variance / Error Breakdown)
+        new Chart(document.getElementById('varianceChart'), {
+            type: 'bar',
+            data: {
+                labels: ['نوسان PoE', 'تداخل IP', 'نویز کابل', 'پر شدن هارد', 'دمای بالا', 'خطای لنز'],
+                datasets: [{
+                    label: 'تعداد رخداد',
+                    data: [14, 9, 6, 4, 8, 3],
+                    backgroundColor: ['#01b8aa', '#fd625e', '#01b8aa', '#f2c80f', '#fd625e', '#374649'],
+                    borderRadius: 4
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { display: false } },
+                scales: {
+                    x: { grid: { display: false }, ticks: { font: { size: 10 } } },
+                    y: { ticks: { font: { size: 10 } } }
+                }
+            }
+        });
+
+        // شبیه‌ساز فید تصویری دوربین مداربسته روی Canvas
+        let feedAnimationId = null;
+        function startSimulatedFeed(canvasId, isOffline = false) {
+            const canvas = document.getElementById(canvasId);
+            if (!canvas) return;
+            const ctx = canvas.getContext('2d');
+            canvas.width = 640;
+            canvas.height = 360;
+
+            let boxX = 120;
+            let dir = 1.5;
+
+            function draw() {
+                // پس‌زمینه محیط تاریک دوربین مداربسته
+                ctx.fillStyle = '#0f172a';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+                if (isOffline) {
+                    ctx.fillStyle = '#ef4444';
+                    ctx.font = 'bold 20px Vazirmatn, sans-serif';
+                    ctx.textAlign = 'center';
+                    ctx.fillText('قطع ارتباط با دوربین (NO VIDEO SIGNAL)', canvas.width / 2, canvas.height / 2);
+                    return;
+                }
+
+                // رسم پرسپکتیو راهرو / محوطه
+                ctx.strokeStyle = '#334155';
+                ctx.lineWidth = 2;
+                ctx.strokeRect(80, 40, 480, 280);
+                ctx.beginPath();
+                ctx.moveTo(0, 0); ctx.lineTo(80, 40);
+                ctx.moveTo(640, 0); ctx.lineTo(560, 40);
+                ctx.moveTo(0, 360); ctx.lineTo(80, 320);
+                ctx.moveTo(640, 360); ctx.lineTo(560, 320);
+                ctx.stroke();
+
+                // شبیه‌سازی کادر تشخیص هوشمند AI (Bounding Box) متحرک
+                boxX += dir;
+                if (boxX > 420 || boxX < 100) dir *= -1;
+
+                // شبح فرد در حال حرکت
+                ctx.fillStyle = 'rgba(148, 163, 184, 0.35)';
+                ctx.fillRect(boxX + 15, 150, 35, 95);
+
+                // کادر سبز تشخیص هوش مصنوعی
+                ctx.strokeStyle = '#01b8aa';
+                ctx.lineWidth = 2;
+                ctx.strokeRect(boxX, 135, 65, 120);
+
+                ctx.fillStyle = '#01b8aa';
+                ctx.fillRect(boxX, 117, 65, 18);
+                ctx.fillStyle = '#000';
+                ctx.font = 'bold 10px monospace';
+                ctx.textAlign = 'left';
+                ctx.fillText('PERSON 98%', boxX + 4, 129);
+
+                // نویز خفیف تصویر
+                for (let i = 0; i < 60; i++) {
+                    ctx.fillStyle = `rgba(255,255,255,${Math.random() * 0.08})`;
+                    ctx.fillRect(Math.random() * 640, Math.random() * 360, 2, 2);
+                }
+
+                feedAnimationId = requestAnimationFrame(draw);
+            }
+            draw();
+        }
+
+        // باز کردن مودال پیش‌نمایش دوربین
+        function previewCamera(id, name, status) {
+            const modal = document.getElementById('cameraModal');
+            document.getElementById('modalCamTitle').textContent = `${id} - ${name}`;
+            const badge = document.getElementById('modalCamBadge');
+            const dot = document.getElementById('modalRecDot');
+
+            if (status === 'offline') {
+                badge.textContent = 'قطع ارتباط';
+                badge.className = 'text-[10px] bg-rose-500/20 text-rose-400 border border-rose-500/30 px-2 py-0.5 rounded';
+                dot.classList.add('hidden');
+            } else {
+                badge.textContent = 'در حال ضبط زنده';
+                badge.className = 'text-[10px] bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 px-2 py-0.5 rounded';
+                dot.classList.remove('hidden');
+            }
+
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+            startSimulatedFeed('simulatedFeedCanvas', status === 'offline');
+        }
+
+        function closeCameraModal() {
+            const modal = document.getElementById('cameraModal');
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
+            if (feedAnimationId) cancelAnimationFrame(feedAnimationId);
+        }
+
+        // باز و بسته کردن دیوار نمایش زنده 4 کاناله
+        function openLiveWallModal() {
+            const modal = document.getElementById('liveWallModal');
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+            startSimulatedFeed('wallCam1', false);
+            startSimulatedFeed('wallCam2', false);
+            startSimulatedFeed('wallCam3', false);
+        }
+
+        function closeLiveWallModal() {
+            const modal = document.getElementById('liveWallModal');
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
+        }
+
+        // به‌روزرسانی داده‌ها با انیمیشن
+        function refreshDashboardData() {
+            const icon = document.getElementById('refreshIcon');
+            icon.classList.add('animate-spin');
+            setTimeout(() => {
+                icon.classList.remove('animate-spin');
+                showToast('تمامی داده‌های سنسورها و دوربین‌ها به‌روزرسانی شدند');
+            }, 700);
+        }
+
+        // جستجوی سریع Q&A
+        function handleQuickSearch(e) {
+            const val = e.target.value.trim();
+            if (e.key === 'Enter' && val) {
+                if (val.includes('آفلاین') || val.includes('قطع')) {
+                    currentStatusFilter = 'offline';
+                    renderCameraTable();
+                    showToast('نمایش دوربین‌های دارای خطا یا قطع ارتباط');
+                } else {
+                    currentStatusFilter = 'all';
+                    renderCameraTable();
+                    showToast(`جستجو برای: «${val}» انجام شد`);
+                }
+            }
+        }
+
+        // تغییر تب در سایدبار
+        function switchTab(tabName, btn) {
+            document.querySelectorAll('.nav-btn').forEach(b => {
+                b.classList.remove('bg-[#3b3a39]', 'text-white', 'border-r-4', 'border-[#01b8aa]');
+            });
+            btn.classList.add('bg-[#3b3a39]', 'text-white', 'border-r-4', 'border-[#01b8aa]');
+            
+            const tabMessages = {
+                'overview': 'نمای کلی و آمار تحلیلی فعال است',
+                'cameras': 'بخش وضعیت ۱۴۸ دوربین فعال شد',
+                'alerts': 'نمایش ۱۲ هشدار هوشمند تایید نشده',
+                'storage': 'وضعیت آرایه‌های RAID و سرورهای NVR'
+            };
+            showToast(tabMessages[tabName]);
+        }
+
+        // باز و بسته کردن سایدبار در موبایل
+        document.getElementById('toggleSidebar').addEventListener('click', () => {
+            const sidebar = document.getElementById('sidebar');
+            sidebar.classList.toggle('hidden');
+            sidebar.classList.toggle('fixed');
+            sidebar.classList.toggle('inset-y-12');
+            sidebar.classList.toggle('right-0');
+            sidebar.classList.toggle('z-40');
+        });
+
+        // نمایش پیام Toast
+        function showToast(msg) {
+            const toast = document.getElementById('toastBox');
+            document.getElementById('toastMessage').textContent = msg;
+            toast.classList.remove('translate-y-20', 'opacity-0');
+            setTimeout(() => {
+                toast.classList.add('translate-y-20', 'opacity-0');
+            }, 3000);
+        }
+
+        // بارگذاری اولیه جدول
+        renderCameraTable();
+    </script>
+</body>
+</html>
